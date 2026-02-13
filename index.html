@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <!-- スマホ対応のためのビューポート設定 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パレット積み付けシミュレーター by おおや</title>
+    <style>
+        body { 
+            font-family: "Helvetica Neue", Arial, sans-serif; 
+            background-color: #f0f2f5; 
+            padding: 10px; 
+            margin: 0;
+            display: flex; 
+            justify-content: center; 
+        }
+        .container { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+            max-width: 1000px; 
+            width: 100%; 
+            display: flex; 
+            flex-direction: column; /* 基本は縦並び（スマホ用） */
+            gap: 20px; 
+        }
+        /* PCなどの広い画面では横並びにする */
+        @media (min-width: 768px) {
+            .container { flex-direction: row; padding: 30px; }
+            .inputs { flex: 1; min-width: 350px; }
+            .visualizer { flex: 1.2; }
+        }
+        
+        .inputs { width: 100%; }
+        .visualizer { 
+            width: 100%;
+            text-align: center; 
+            background: #fdfdfd; 
+            border: 1px solid #e0e0e0; 
+            border-radius: 8px; 
+            padding: 10px; 
+            box-sizing: border-box;
+        }
+        h1 { font-size: 1.2rem; margin-bottom: 20px; color: #333; border-left: 5px solid #007bff; padding-left: 12px; }
+        .input-group { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        label { font-size: 0.85rem; color: #555; }
+        input { 
+            width: 80px; 
+            padding: 10px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            text-align: right; 
+            font-size: 1rem; 
+            -webkit-appearance: none; /* iOS対策 */
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 15px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-weight: bold; 
+            font-size: 1.1rem; 
+            margin-top: 10px; 
+            transition: 0.2s; 
+        }
+        button:active { background: #0056b3; transform: scale(0.98); }
+        #result-text { margin-top: 20px; padding: 15px; border-radius: 8px; background: #eef7ff; border: 1px solid #d0e3ff; line-height: 1.6; font-size: 0.9rem; }
+        
+        /* キャンバスをレスポンシブに */
+        .canvas-container {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            position: relative;
+        }
+        canvas { 
+            background-color: #eee; 
+            border-radius: 4px; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.05); 
+            width: 100%; /* 横幅いっぱい */
+            height: auto; /* アスペクト比維持 */
+        }
+        .summary-val { font-weight: bold; font-size: 1.2rem; color: #007bff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="inputs">
+        <h1>積み付けシミュレーター</h1>
+        <div class="input-group"><label>パレット幅 (W) mm:</label><input type="number" id="pw" value="1400"></div>
+        <div class="input-group"><label>パレット奥行 (D) mm:</label><input type="number" id="pd" value="1100"></div>
+        <hr style="border:0; border-top:1px solid #eee; margin: 15px 0;">
+        <div class="input-group"><label>荷物 幅 (w) mm:</label><input type="number" id="bw" value="435"></div>
+        <div class="input-group"><label>荷物 奥行 (d) mm:</label><input type="number" id="bd" value="265"></div>
+        <div class="input-group"><label>荷物 高さ (h) mm:</label><input type="number" id="bh" value="660"></div>
+        <div class="input-group"><label>高さ制限 mm:</label><input type="number" id="maxH" value="1800"></div>
+        <button onclick="runSimulation()">計算 ＆ 描画</button>
+
+        <div id="result-text">数値を入力して計算ボタンを押してください</div>
+    </div>
+
+    <div class="visualizer">
+        <div class="canvas-container">
+            <canvas id="palletCanvas" width="500" height="500"></canvas>
+        </div>
+        <p style="margin-top:10px; color:#888; font-size:0.75rem;">積み付けイメージ (上面図)</p>
+    </div>
+</div>
+
+<script>
+function runSimulation() {
+    const PW = parseFloat(document.getElementById('pw').value);
+    const PD = parseFloat(document.getElementById('pd').value);
+    const bw = parseFloat(document.getElementById('bw').value);
+    const bd = parseFloat(document.getElementById('bd').value);
+    const bh = parseFloat(document.getElementById('bh').value);
+    const maxH = parseFloat(document.getElementById('maxH').value);
+
+    const canvas = document.getElementById('palletCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // キャンバスの内部解像度を固定（描画計算を楽にするため）
+    canvas.width = 500;
+    canvas.height = 500;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // スケーリング
+    const padding = 60;
+    const scale = Math.min((canvas.width - padding) / PW, (canvas.height - padding) / PD);
+    const offsetX = (canvas.width - PW * scale) / 2;
+    const offsetY = (canvas.height - PD * scale) / 2;
+
+    // パレット描画
+    ctx.fillStyle = "#e0e0e0";
+    ctx.fillRect(offsetX, offsetY, PW * scale, PD * scale);
+    ctx.strokeStyle = "#999";
+    ctx.strokeRect(offsetX, offsetY, PW * scale, PD * scale);
+
+    function drawBox(x, y, w, d, color) {
+        if (x + w > PW + 1 || y + d > PD + 1) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(offsetX + x * scale, offsetY + y * scale, w * scale, d * scale);
+        ctx.strokeStyle = "rgba(0,0,0,0.4)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(offsetX + x * scale, offsetY + y * scale, w * scale, d * scale);
+    }
+
+    let countV = Math.floor(PW / bw) * Math.floor(PD / bd);
+    let countH = Math.floor(PW / bd) * Math.floor(PD / bw);
+    
+    let nx = Math.floor((PW - bd) / bw); 
+    let ny = Math.floor((PD - bw) / bd);
+    let countPin = 0;
+    let patternType = "";
+
+    if (nx >= 1 && ny >= 1) {
+        const splitX = nx * bw;
+        const splitY = ny * bd;
+        for(let i=0; i<nx; i++) for(let j=0; j<ny; j++) { drawBox(i*bw, j*bd, bw, bd, "#CCAA00"); countPin++; }
+        let nxB = Math.floor((PW - splitX) / bd);
+        let nyB = Math.floor(splitY / bw);
+        for(let i=0; i<nxB; i++) for(let j=0; j<nyB; j++) { drawBox(splitX + i*bd, j*bw, bd, bw, "#F39C12"); countPin++; }
+        let nyC = Math.floor((PD - splitY) / bd);
+        for(let i=0; i<nx; i++) for(let j=0; j<nyC; j++) { drawBox(PW - nx*bw + i*bw, splitY + j*bd, bw, bd, "#CCAA00"); countPin++; }
+        let nxD = Math.floor((PW - nx*bw) / bd);
+        let nyD = Math.floor((PD - splitY) / bw);
+        for(let i=0; i<nxD; i++) for(let j=0; j<nyD; j++) { drawBox(i*bd, splitY + j*bw, bd, bw, "#F39C12"); countPin++; }
+        patternType = "廻し積み (ピンホイール)";
+    } else {
+        if (countV >= countH) {
+            for(let i=0; i<Math.floor(PW/bw); i++) for(let j=0; j<Math.floor(PD/bd); j++) drawBox(i*bw, j*bd, bw, bd, "#CCAA00");
+            countPin = countV;
+            patternType = "ブロック積み (並行)";
+        } else {
+            for(let i=0; i<Math.floor(PW/bd); i++) for(let j=0; j<Math.floor(PD/bw); j++) drawBox(i*bd, j*bw, bd, bw, "#F39C12");
+            countPin = countH;
+            patternType = "ブロック積み (並行・回転)";
+        }
+    }
+
+    let layers = Math.floor(maxH / bh);
+    let total = countPin * layers;
+
+    document.getElementById('result-text').innerHTML = `
+        <strong>【積み付け結果】</strong><br>
+        パターン: ${patternType}<br>
+        1段あたりの個数: <span class="summary-val">${countPin}</span> 個<br>
+        積載段数: <span class="summary-val">${layers}</span> 段<br>
+        合計個数: <span class="summary-val">${total}</span> 個<br>
+        全体の高さ: ${layers * bh} mm
+    `;
+
+    ctx.fillStyle = "#D4AC0D";
+    ctx.font = "bold 14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(PW + " (W)", offsetX + (PW*scale)/2, offsetY - 15);
+    
+    ctx.save();
+    ctx.translate(offsetX + PW*scale + 25, offsetY + (PD*scale)/2);
+    ctx.rotate(Math.PI/2);
+    ctx.fillText(PD + " (D)", 0, 0);
+    ctx.restore();
+}
+
+// 初期実行
+runSimulation();
+</script>
+</body>
+</html>
